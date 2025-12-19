@@ -3,7 +3,7 @@ Small upload CLI for the Aeroval Upload service. As of now it only runs with loc
 
 ## Requirements
 
-- >= Python 3.10
+- Python >= 3.12
 
 
 
