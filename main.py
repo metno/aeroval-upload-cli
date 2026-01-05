@@ -3,6 +3,7 @@ import requests
 from tusclient import client
 from pathlib import Path
 import magic
+import netrc
 from typing_extensions import Annotated
 from rich import print
 
@@ -13,11 +14,29 @@ CHUNK_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
 def main(
-    email: Annotated[str, typer.Option("--email", "-e", help="Email address")],
-    password: Annotated[str, typer.Option("--password", "-p", help="Password")],
     files: Annotated[list[Path], typer.Option("--files", "-f", help="Files to upload")],
+    netrc_machine: Annotated[
+        str | None,
+        typer.Option(
+            "--netrc",
+            "-n",
+            help="Name of netrc register used for authentication. Must be located in ~/.netrc",
+        ),
+    ] = None,
 ):
-    token = get_token(email, password)
+    if netrc_machine is not None:
+        try:
+            netrc_data = netrc.netrc()
+            email, _, pw = netrc_data.authenticators(netrc_machine)
+        except FileNotFoundError:
+            raise typer.BadParameter("netrc file not found")
+        except Exception as e:
+            raise typer.BadParameter(f"Error reading netrc file: {e}")
+    else:
+        email = typer.prompt("Email")
+        pw = typer.prompt("Password", hide_input=True)
+
+    token = get_token(email, pw)
     uploaded_files = 0
     total_files = len(files)
     for file in files:
@@ -37,9 +56,7 @@ def main(
 
 
 def get_token(email: str, password: str):
-    response = requests.post(
-        "http://localhost:8000/token", json={"username": email, "password": password}
-    )
+    response = requests.post(TOKEN_URL, json={"username": email, "password": password})
     response.raise_for_status()
     return response.json()
 
@@ -64,7 +81,7 @@ def upload_file(file: Path, token: dict, mime_type: str):
     uploader = tus.uploader(
         file_path=str(file),
         chunk_size=CHUNK_SIZE,
-        retries=5,
+        retries=2,
     )
     uploader.metadata = {"filename": file.name, "filetype": mime_type}
     print(f"Uploading file {file}...")
